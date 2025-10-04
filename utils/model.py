@@ -1,5 +1,5 @@
-import pandas as pd
 from docplex.mp.model import Model
+import pandas as pd
 
 class TutorAssignmentModel:
     '''
@@ -124,6 +124,21 @@ class TutorAssignmentModel:
                     preference_matrix[new_student['studentId'],tutor['tutorId']] = 0.5
                 else:
                     preference_matrix[new_student['studentId'],tutor['tutorId']] = 0
+        
+        # Create a penalty term reduce free capacity for each tutor
+        existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
+        free_capacity = {}
+        for _, tutor in self.tutor_info.iterrows():
+            tutor_id = tutor['tutorId']
+            tutor_max_capacity = tutor['maxOverallCapacity']
+            existing_student_count = existing_counts.get(tutor_id, 0)
+    
+            # Sum of all new students assigned to this tutor
+            new_assigned_student_count = sum(
+                self.assign_vars[(s['studentId'], tutor_id)] for _, s in self.new_students.iterrows()
+                )
+            # Free capacity = max - (existing + new assigned)
+            free_capacity[tutor_id] = tutor_max_capacity - existing_student_count - new_assigned_student_count
 
         # Define the objective function
         ## Maximise the total student-tutor assignment that matches tutor preferred tuition centre
@@ -133,6 +148,7 @@ class TutorAssignmentModel:
                 for _,new_student in self.new_students.iterrows()
                 for _,tutor in self.tutor_info.iterrows())
             - sum(self.tutor_used[tutor_id] * (1 - self.beta) for tutor_id in self.tutor_used)
+            - sum(free_capacity[tutor_id] * (1-self.beta) for tutor_id in free_capacity)
         )
         return
     
@@ -171,12 +187,143 @@ class TutorAssignmentModel:
 
         return
 
-    def constraint_checker(self):
+    def constraint_checker(self,solution,tol = 1e-5):
         '''
         Function to check if assignment(s) violate
         any constrainted mentioned
         '''
-        return
+        if not solution:
+            print("No solution")
+            return
+        
+        violations = []
+
+        # Each student assigned to exactly 1 tutor
+        print("Checking if all student assigned to exactly 1 tutor....")
+        for _,student in self.new_students.iterrows():
+            assigned = sum(
+                self.assign_vars[(student['studentId'], tutor_id)].solution_value for tutor_id in self.tutor_used)
+            if abs(assigned - 1) > tol:
+                # Use a small tolerance (e.g., 1e-5) instead of 0 to account for 
+                # floating-point rounding errors in the solver
+                violations.append(f"Student {student['studentId']} assigned {assigned} tutors")
+        
+        # Check Tutor capacity didnt burst
+        print("Checking if any of the tutor's capacity has been burst...")
+        existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
+
+        for _,tutor in self.tutor_info.iterrows():
+            tutor_id = tutor['tutorId']
+            max_capacity = tutor['maxOverallCapacity']
+            new_student_count = sum(
+                self.assign_vars[(student['studentId'], tutor_id)].solution_value
+                for _, student in self.new_students.iterrows()
+                )
+            total_assigned = new_student_count + existing_counts.get(tutor_id,0)
+
+            if total_assigned - max_capacity > tol:
+                violations.append(f"Tutor {tutor_id} capacity exceeded: {total_assigned}/{max_capacity}")
+        
+        # Check if Extensive tutoringNeed student assigned to Extensive tutoringSkills tutor
+        print("Checking if Extensive tutoringNeed student assigned only to Extensive tutoringSkills tutors...")
+        for _, student in self.new_students.iterrows():
+            if student['tutoringNeed'] == 'Extensive':
+                for _, tutor in self.tutor_info.iterrows():
+                    if tutor['tutoringSkills'] != 'Extensive':
+                        val = self.assign_vars[(student['studentId'], tutor['tutorId'])].solution_value
+                        if val > tol:
+                            violations.append(f"Student {student['studentId']} assigned to incompatible tutor {tutor['tutorId']}")
+        
+        if violations:
+            print("Constraint violations found:")
+            for v in violations:
+                print(" -", v)
+            return False
+        else:
+            print("All constraints satisfied.")
+            return True
+        
+    def tutor_summary(self,solution):
+        '''
+        Check to see if tutors are fully/partially utilized
+        or idle
+        '''
+        if not solution:
+            print("No solution.")
+            return
+        
+        existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
+        summary = []
+
+        for _,tutor in self.tutor_info.iterrows():
+            tutor_id = tutor['tutorId']
+            new_student_count = sum(
+                self.assign_vars[(new_student['studentId'], tutor_id)].solution_value
+                for _, new_student in self.new_students.iterrows()
+                )
+            total_count = new_student_count + existing_counts.get(tutor_id,0)
+            free_capacity = tutor['maxOverallCapacity'] - total_count
+            summary.append(
+                {
+                    "TutorID": tutor_id,
+                    "NewAssigned": new_student_count,
+                    "Existing": existing_counts.get(tutor_id, 0),
+                    "TotalAssigned": total_count,
+                    'MaxCapacity': tutor['maxOverallCapacity'],
+                    "FreeCapacity": free_capacity
+                }
+                )
+        
+        return pd.DataFrame(summary)
+    
+    def preference_satisfaction(self,solution):
+        '''
+        Function that generates dataframe to check
+        how much of tutor preferred tuition centre(s)
+        are actually choosen by the model
+        '''
+        if not solution:
+            print("No solution.")
+            return
+        
+        satisfied = 0
+        total = 0
+        
+        for _,student in self.new_students.iterrows():
+            for _,tutor in self.tutor_info.iterrows():
+                value =  self.assign_vars[(student['studentId'], tutor['tutorId'])].solution_value
+                if value > 0.5:
+                    total += 1
+                    if student['tuitionCentre'] in [tutor['preferredCentre1'],tutor['preferredCentre2']]:
+                        satisfied += 1
+        print(f"Preference satisfaction: {satisfied}/{total} ({100*satisfied/total:.1f}%)")
+        return satisfied / total if total > 0 else 0
+    
+    def preference_report(self,solution):
+        '''
+        Function that compares the new student's 
+        tution centre against the tutor's preferred tuiton centre(s)
+        '''
+        if not solution:
+            print("No solution.")
+            return
+
+        records = []
+        for _,student in self.new_students.iterrows():
+            for _,tutor in self.tutor_info.iterrows():
+                value = self.assign_vars[(student['studentId'], tutor['tutorId'])].solution_value
+                if value > 0.5:
+                    records.append({
+                        "StudentID": student['studentId'],
+                        "StudentCentre": student['tuitionCentre'],
+                        "TutorID": tutor['tutorId'],
+                        "TutorPref1": tutor['preferredCentre1'],
+                        "TutorPref2": tutor['preferredCentre2'],
+                        "MatchPref": student['tuitionCentre'] in [tutor['preferredCentre1'], tutor['preferredCentre2']]
+                        }
+                        )
+        data = pd.DataFrame(records)
+        return data
 
     def main_process(self):
         '''
@@ -188,27 +335,19 @@ class TutorAssignmentModel:
         self.add_constraints()
         self.set_objective_function()
         solution = self.model.solve()
-
         # print solution
         self.print_solution(solution=solution)
-        
+        # check if any constraints got violated
+        self.constraint_checker(solution=solution)
+        # generate report on tutor capacity after optimization
+        tutor_summary = self.tutor_summary(solution=solution)
+        print(tutor_summary)
+        # Find out total number of students for each tutor that are in 
+        # tuition centres of tutor's preferred choice
+        self.preference_satisfaction(solution=solution)
+        # Generate data frame that compares student's tuition centre against
+        # tutor preferred cchoices
+        preference_data = self.preference_report(solution=solution)
+        print(preference_data)
         # export solution
         self.export_solution(solution=solution)
-
-if __name__ == "__main__":
-    DATA_PATH = "./data/small_data.xlsx"
-
-    # Load specific sheets
-    new_student_info = pd.read_excel(DATA_PATH, sheet_name="New Students")
-    tutors = pd.read_excel(DATA_PATH, sheet_name="Tutor Information")
-    existing_student_info = pd.read_excel(DATA_PATH, sheet_name="Existing Students")
-    existing_student_info_filtered = existing_student_info[existing_student_info['active'] == True]
-    print(new_student_info)
-    print(tutors)
-
-    optimizer = TutorAssignmentModel(
-        new_students=new_student_info,tutor_info=tutors,
-        existing_students=existing_student_info_filtered
-        )
-
-    optimizer.main_process()
