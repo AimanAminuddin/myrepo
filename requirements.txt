@@ -1,5 +1,6 @@
 # Modeling & solver interface
 docplex>=2.28.0
+cplex
 
 # Data handling
 pandas>=2.0.0
