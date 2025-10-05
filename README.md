@@ -105,14 +105,16 @@ After optimization, the following reports are generated:
    python -m venv venv
 
 2. Activate the environment:
-   # For Linux/macOS
-   source venv/bin/activate
-   # For Windows
-   venv\Scripts\activate
+   -For Linux/macOS:
+    source venv/bin/activate
+   -For Windows:
+    venv\Scripts\activate
 
 3. Install the required packages:
    pip install -r requirements.txt
 
 4. Run the main script:
    python main.py
+
+5. Open up the jupyter notebook: TutorAssignment.ipynb to view visualiation of result 
 --
