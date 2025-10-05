@@ -1,6 +1,13 @@
 from docplex.mp.model import Model
 import pandas as pd
 
+import logging
+
+# Setup at the top of your script or notebook
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 class TutorAssignmentModel:
     '''
     Wrapper class to optimize the assignment of 
@@ -166,9 +173,9 @@ class TutorAssignmentModel:
         if solution:
             for (student_id,tutor_id),var in self.assign_vars.items():
                 if var.solution_value > 0.5:
-                    print(f'Student {student_id} assigned to Tutor {tutor_id}')
+                    logging.info(f'Student {student_id} assigned to Tutor {tutor_id}')
         else:
-            print('No solution')
+            logging.warning('No solution')
 
     def export_solution(self,solution,file_name = 'assignment_results.csv'):
         '''
@@ -180,10 +187,10 @@ class TutorAssignmentModel:
                 if var.solution_value > 0.5:
                     records.append({"StudentID": student_id,"TutorID":tutor_id})
             data = pd.DataFrame(records)
-            data.to_csv(file_name,index = False)
-            print(f"Solution exported to {file_name}")
+            data.to_csv(f'./results/{file_name}',index = False)
+            logging.info(f"Solution exported to {file_name}")
         else:
-            print("No solution to export")
+            logging.warning("No solution to export")
 
         return
 
@@ -193,13 +200,13 @@ class TutorAssignmentModel:
         any constrainted mentioned
         '''
         if not solution:
-            print("No solution")
+            logging.warning("No solution")
             return
         
         violations = []
 
         # Each student assigned to exactly 1 tutor
-        print("Checking if all student assigned to exactly 1 tutor....")
+        logging.info("Checking if all student assigned to exactly 1 tutor....")
         for _,student in self.new_students.iterrows():
             assigned = sum(
                 self.assign_vars[(student['studentId'], tutor_id)].solution_value for tutor_id in self.tutor_used)
@@ -209,7 +216,7 @@ class TutorAssignmentModel:
                 violations.append(f"Student {student['studentId']} assigned {assigned} tutors")
         
         # Check Tutor capacity didnt burst
-        print("Checking if any of the tutor's capacity has been burst...")
+        logging.info("Checking if any of the tutor's capacity has been burst...")
         existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
 
         for _,tutor in self.tutor_info.iterrows():
@@ -225,7 +232,7 @@ class TutorAssignmentModel:
                 violations.append(f"Tutor {tutor_id} capacity exceeded: {total_assigned}/{max_capacity}")
         
         # Check if Extensive tutoringNeed student assigned to Extensive tutoringSkills tutor
-        print("Checking if Extensive tutoringNeed student assigned only to Extensive tutoringSkills tutors...")
+        logging.info("Checking if Extensive tutoringNeed student assigned only to Extensive tutoringSkills tutors...")
         for _, student in self.new_students.iterrows():
             if student['tutoringNeed'] == 'Extensive':
                 for _, tutor in self.tutor_info.iterrows():
@@ -235,12 +242,12 @@ class TutorAssignmentModel:
                             violations.append(f"Student {student['studentId']} assigned to incompatible tutor {tutor['tutorId']}")
         
         if violations:
-            print("Constraint violations found:")
+            logging.warning("Constraint violations found:")
             for v in violations:
-                print(" -", v)
+                logging.warning(" - %s", v)
             return False
         else:
-            print("All constraints satisfied.")
+            logging.info("All constraints satisfied.")
             return True
         
     def tutor_summary(self,solution):
@@ -249,7 +256,7 @@ class TutorAssignmentModel:
         or idle
         '''
         if not solution:
-            print("No solution.")
+            logging.warning("No solution.")
             return
         
         existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
@@ -273,8 +280,8 @@ class TutorAssignmentModel:
                     "FreeCapacity": free_capacity
                 }
                 )
-        
-        return pd.DataFrame(summary)
+        tutor_summary = pd.DataFrame(summary)
+        tutor_summary.to_csv("./results/tutor_summary.csv",index=False)
     
     def preference_satisfaction(self,solution):
         '''
@@ -283,11 +290,13 @@ class TutorAssignmentModel:
         are actually choosen by the model
         '''
         if not solution:
-            print("No solution.")
+            logging.warning("No solution.")
             return
-        
+
         satisfied = 0
         total = 0
+
+        logging.info("Calculate Total Satisfication of tutors...")
         
         for _,student in self.new_students.iterrows():
             for _,tutor in self.tutor_info.iterrows():
@@ -296,7 +305,7 @@ class TutorAssignmentModel:
                     total += 1
                     if student['tuitionCentre'] in [tutor['preferredCentre1'],tutor['preferredCentre2']]:
                         satisfied += 1
-        print(f"Preference satisfaction: {satisfied}/{total} ({100*satisfied/total:.1f}%)")
+        logging.info(f"Preference satisfaction: {satisfied}/{total} ({100*satisfied/total:.1f}%)")
         return satisfied / total if total > 0 else 0
     
     def preference_report(self,solution):
@@ -305,8 +314,10 @@ class TutorAssignmentModel:
         tution centre against the tutor's preferred tuiton centre(s)
         '''
         if not solution:
-            print("No solution.")
+            logging.warning("No solution.")
             return
+        
+        logging.info("Generate report of Student-Tutor Assignments...")
 
         records = []
         for _,student in self.new_students.iterrows():
@@ -323,7 +334,8 @@ class TutorAssignmentModel:
                         }
                         )
         data = pd.DataFrame(records)
-        return data
+        data.to_csv("./results/preference_report.csv",index=False)
+        return 
 
     def main_process(self):
         '''
@@ -340,14 +352,12 @@ class TutorAssignmentModel:
         # check if any constraints got violated
         self.constraint_checker(solution=solution)
         # generate report on tutor capacity after optimization
-        tutor_summary = self.tutor_summary(solution=solution)
-        print(tutor_summary)
+        self.tutor_summary(solution=solution)
         # Find out total number of students for each tutor that are in 
         # tuition centres of tutor's preferred choice
         self.preference_satisfaction(solution=solution)
         # Generate data frame that compares student's tuition centre against
         # tutor preferred cchoices
-        preference_data = self.preference_report(solution=solution)
-        print(preference_data)
+        self.preference_report(solution=solution)
         # export solution
         self.export_solution(solution=solution)
