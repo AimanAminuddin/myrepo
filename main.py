@@ -13,7 +13,8 @@ if __name__ == "__main__":
 
     optimizer = TutorAssignmentModel(
         new_students=new_student_info,tutor_info=tutors,
-        existing_students=existing_student_info_filtered
+        existing_students=existing_student_info_filtered,
+        scenario=2
         )
-    
+
     optimizer.main_process()
