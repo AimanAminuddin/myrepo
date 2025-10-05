@@ -78,3 +78,42 @@ After optimization, the following reports are generated:
      - `scenario_2_{name of the report}.csv`
 
 ---
+
+## Setup & Run Instructions
+
+1. **Install IBM CPLEX Community Edition**
+   - Download from: https://www.ibm.com/products/ilog-cplex-optimization-studio  
+   - Follow installation instructions for your OS.
+   - Make sure the CPLEX Python API is installed (usually via `pip install cplex` or through the CPLEX Python setup script).
+
+2. **Set Environment Path (if needed)**
+   - Ensure the `cplex` shared library is in your system path.
+   - Example (Linux/macOS):
+     ```bash
+     export PYTHONPATH=/opt/ibm/ILOG/CPLEX_Studio221/python/3.11/x64_linux:$PYTHONPATH
+     export PATH=/opt/ibm/ILOG/CPLEX_Studio221/cplex/bin/x64_linux:$PATH
+     ```
+   - Example (Windows PowerShell):
+     ```powershell
+     setx PYTHONPATH "C:\Program Files\IBM\ILOG\CPLEX_Studio221\python\3.11\x64_win64"
+     setx PATH "C:\Program Files\IBM\ILOG\CPLEX_Studio221\cplex\bin\x64_win64;%PATH%"
+     ```
+
+3. **Create & activate Python virtual environment**
+
+Run the following commands in the terminal
+# Create and activate Python virtual environment
+python -m venv venv
+source venv/bin/activate   # Linux/macOS
+venv\Scripts\activate      # Windows
+
+# Install required packages
+pip install -r requirements.txt
+
+# Run the main script
+python main.py
+
+# Optional: Open the Jupyter Notebook for interactive results
+jupyter notebook TutorAssignment.ipynb
+
+--
