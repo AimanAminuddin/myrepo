@@ -101,20 +101,20 @@ After optimization, the following reports are generated:
 
 3. **Create & activate Python virtual environment**
 
-1. Create a Python virtual environment:
-   python -m venv venv
+Run the following commmands to set up the virtual environment
+```
+# Create a python virtual environment
+python -m venv venv
 
-2. Activate the environment:
-   -For Linux/macOS:
-    source venv/bin/activate
-   -For Windows:
-    venv\Scripts\activate
+# Activate virtual environment
+source venv/bin/activate # Linux/macOS
+venv\Scripts\activate # Windows
 
-3. Install the required packages:
-   pip install -r requirements.txt
+# Install required packages
+pip install -r requirements.txt
 
-4. Run the main script:
-   python main.py
-
-5. Open up the jupyter notebook: TutorAssignment.ipynb to view visualiation of result 
+# Run the main script
+python main.py
+```
+*Read the notebook: TutorAssignment.ipynb for model results
 --
