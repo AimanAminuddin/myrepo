@@ -14,7 +14,7 @@ class TutorAssignmentModel:
     students to tutors based on both student preference(s)/
     tutor preference(s)
     '''
-    def __init__(self,new_students,tutor_info,existing_students,beta = 0.9):
+    def __init__(self,new_students,tutor_info,existing_students,beta = 0.9,scenario=1):
         '''
         Assign variable(s) to be class properties
         '''
@@ -22,6 +22,9 @@ class TutorAssignmentModel:
         self.tutor_info = tutor_info
         self.existing_students = existing_students
         self.beta = beta
+        # Control which objective function to used for different
+        # task
+        self.scenario = scenario
 
         self.model = Model(name="tutor_student_assignment")
         # Assignment_variable_mappings
@@ -115,13 +118,17 @@ class TutorAssignmentModel:
         return
     
     # Set the objective function
-    def set_objective_function(self):
+    def set_objective_function(self,scenario):
         '''
-        Based on above constraint(s), maximimise 
-        the total student-tutor assignment that matches tutor
-        preffered centre(s) while at the same time minimize 
-        the total number of tutor assigned to different students
+        Based on the above constraint(s),generate the objective
+        function for Scenario 1 and 2:
+        1.Scenario 1:
+            Minimize total number of assigned while maximizing tutor preference
+            on tuition centre
+        2.Scenario 2:
+            Balance tutor workload while maximizing preference on tuition centre
         '''
+        # Build preference matrix
         preference_matrix = {}
         for _,new_student in self.new_students.iterrows():
             for _,tutor in self.tutor_info.iterrows():
@@ -132,32 +139,85 @@ class TutorAssignmentModel:
                 else:
                     preference_matrix[new_student['studentId'],tutor['tutorId']] = 0
         
-        # Create a penalty term reduce free capacity for each tutor
+        # Generate term that model tutor's preferences being met
+        preference_term = sum(
+            self.assign_vars[new_student['studentId'], tutor['tutorId']] * self.beta * 
+            preference_matrix[new_student['studentId'], tutor['tutorId']]
+            for _,new_student in self.new_students.iterrows()
+            for _,tutor in self.tutor_info.iterrows()
+            )
+        
+        # Generate term that model the total tutors used
+        tutor_used_term = sum(self.tutor_used[tutor_id] * (1 - self.beta) for tutor_id in self.tutor_used)
+
+        # Compute free capacity for Scenario 2
         existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
         free_capacity = {}
         for _, tutor in self.tutor_info.iterrows():
             tutor_id = tutor['tutorId']
             tutor_max_capacity = tutor['maxOverallCapacity']
             existing_student_count = existing_counts.get(tutor_id, 0)
-    
-            # Sum of all new students assigned to this tutor
             new_assigned_student_count = sum(
                 self.assign_vars[(s['studentId'], tutor_id)] for _, s in self.new_students.iterrows()
                 )
-            # Free capacity = max - (existing + new assigned)
             free_capacity[tutor_id] = tutor_max_capacity - existing_student_count - new_assigned_student_count
 
-        # Define the objective function
-        ## Maximise the total student-tutor assignment that matches tutor preferred tuition centre
-        ## But minimize total tutor resources used
-        self.model.maximize(
-             sum(self.assign_vars[new_student['studentId'], tutor['tutorId']] * self.beta * preference_matrix[new_student['studentId'], tutor['tutorId']]
-                for _,new_student in self.new_students.iterrows()
-                for _,tutor in self.tutor_info.iterrows())
-            - sum(self.tutor_used[tutor_id] * (1 - self.beta) for tutor_id in self.tutor_used)
-            - sum(free_capacity[tutor_id] * (1-self.beta) for tutor_id in free_capacity)
-        )
+        logging.info(f'Optimizing based of Scenario: {scenario}')
+
+        if scenario == 1:
+            # Maximize preference but minimize total tutor count
+            self.model.maximize(preference_term - tutor_used_term)
+        elif scenario == 2:
+            # Maximise preference and balance tutor workload
+            workload_term = sum(free_capacity[t_id] * (1 - self.beta) for t_id in free_capacity)
+            self.model.maximize(preference_term - workload_term)
+            pass
+        else:
+            logging.error(f'No objective function for Scenario: {scenario}')
         return
+    # def set_objective_function(self):
+    #     '''
+    #     Based on above constraint(s), maximimise 
+    #     the total student-tutor assignment that matches tutor
+    #     preffered centre(s) while at the same time minimize 
+    #     the total number of tutor assigned to different students
+    #     '''
+    #     preference_matrix = {}
+    #     for _,new_student in self.new_students.iterrows():
+    #         for _,tutor in self.tutor_info.iterrows():
+    #             if new_student['tuitionCentre'] == tutor['preferredCentre1']:
+    #                 preference_matrix[new_student['studentId'],tutor['tutorId']] = 1
+    #             elif new_student['tuitionCentre'] == tutor['preferredCentre2']:
+    #                 preference_matrix[new_student['studentId'],tutor['tutorId']] = 0.5
+    #             else:
+    #                 preference_matrix[new_student['studentId'],tutor['tutorId']] = 0
+        
+    #     # Create a penalty term reduce free capacity for each tutor
+    #     existing_counts = self.existing_students.groupby('tutorId').size().to_dict()
+    #     free_capacity = {}
+    #     for _, tutor in self.tutor_info.iterrows():
+    #         tutor_id = tutor['tutorId']
+    #         tutor_max_capacity = tutor['maxOverallCapacity']
+    #         existing_student_count = existing_counts.get(tutor_id, 0)
+    
+    #         # Sum of all new students assigned to this tutor
+    #         new_assigned_student_count = sum(
+    #             self.assign_vars[(s['studentId'], tutor_id)] for _, s in self.new_students.iterrows()
+    #             )
+    #         # Free capacity = max - (existing + new assigned)
+    #         free_capacity[tutor_id] = tutor_max_capacity - existing_student_count - new_assigned_student_count
+
+    #     # Define the objective function
+    #     ## Maximise the total student-tutor assignment that matches tutor preferred tuition centre
+    #     ## But minimize total tutor resources used
+    #     self.model.maximize(
+    #          sum(self.assign_vars[new_student['studentId'], tutor['tutorId']] * self.beta * preference_matrix[new_student['studentId'], tutor['tutorId']]
+    #             for _,new_student in self.new_students.iterrows()
+    #             for _,tutor in self.tutor_info.iterrows())
+    #         - sum(self.tutor_used[tutor_id] * (1 - self.beta) for tutor_id in self.tutor_used)
+    #         - sum(free_capacity[tutor_id] * (1-self.beta) for tutor_id in free_capacity)
+    #     )
+    #     return
     
     def solve(self,log_output = True):
         '''
@@ -187,7 +247,7 @@ class TutorAssignmentModel:
                 if var.solution_value > 0.5:
                     records.append({"StudentID": student_id,"TutorID":tutor_id})
             data = pd.DataFrame(records)
-            data.to_csv(f'./results/{file_name}',index = False)
+            data.to_csv(f'./results/scenario_{self.scenario}_{file_name}',index = False)
             logging.info(f"Solution exported to {file_name}")
         else:
             logging.warning("No solution to export")
@@ -281,7 +341,7 @@ class TutorAssignmentModel:
                 }
                 )
         tutor_summary = pd.DataFrame(summary)
-        tutor_summary.to_csv("./results/tutor_summary.csv",index=False)
+        tutor_summary.to_csv(f"./results/scenario_{self.scenario}_tutor_summary.csv",index=False)
     
     def preference_satisfaction(self,solution):
         '''
@@ -334,7 +394,7 @@ class TutorAssignmentModel:
                         }
                         )
         data = pd.DataFrame(records)
-        data.to_csv("./results/preference_report.csv",index=False)
+        data.to_csv(f"./results/scenario_{self.scenario}_preference_report.csv",index=False)
         return 
 
     def main_process(self):
@@ -345,7 +405,7 @@ class TutorAssignmentModel:
         # Model building part
         self.create_variables()
         self.add_constraints()
-        self.set_objective_function()
+        self.set_objective_function(scenario=self.scenario)
         solution = self.model.solve()
         # print solution
         self.print_solution(solution=solution)
