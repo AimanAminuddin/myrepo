@@ -115,6 +115,7 @@ pip install -r requirements.txt
 
 # Run the main script
 python main.py
+
+# Read the notebook: TutorAssignment.ipynb for model results
 ```
-*Read the notebook: TutorAssignment.ipynb for model results
---
+---
