@@ -50,3 +50,31 @@ The problem is modeled using **Python** and the **docplex** library with IBM CPL
 3. **Objective Functions**
    - **Scenario 1:** Maximize tutor preference while minimizing tutors used.  
    - **Scenario 2:** Maximize tutor preference while **balancing workload** (minimizing free capacity)
+
+
+---
+
+## Outputs & Post-Processing
+
+After optimization, the following reports are generated:
+
+1. **Student-Tutor-Assignments**
+   - Generate a csv file containing the assignment of students to different tutors
+   - Columns: `StudentID`,`TutorID`
+   - Assignments are saved for each scenario mentioned in the task:
+	- `scenario_1_assignment_results.csv`
+	- `scenario_2_assignment_results.csv`
+
+2. **Tutor Summary Report**
+   - Columns: `TutorID`, `NewAssigned`, `Existing`, `TotalAssigned`, `MaxCapacity`, `FreeCapacity`   
+
+3. **Preference Report**
+   - Lists each student’s tuition centre against the assigned tutor’s top 2 preferred centres.  
+   - Includes a boolean indicating if the assignment matches one of the tutor’s preferred centres.
+
+4. **CSV Export**
+   - Reports are saved for each scenario:  
+     - `scenario_1_{name of the report}.csv`  
+     - `scenario_2_{name of the report}.csv`
+
+---
