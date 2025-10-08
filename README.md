@@ -55,8 +55,7 @@ The problem is modeled using **Python** and the **docplex** library with IBM CPL
 ---
 
 ## Outputs & Post-Processing
-
-After optimization, the following reports are generated:
+Before Optimization, non-active students are filtered out to prevent overcounting existing students assigned to tutors. After optimization, the following reports are generated:
 
 1. **Student-Tutor-Assignments**
    - Generate a csv file containing the assignment of students to different tutors
