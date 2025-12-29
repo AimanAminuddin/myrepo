@@ -1,5 +1,5 @@
 # myrep
-HTX xData Technical Question-Data Scientist
+Pet Project for Mixed Integer Programming
 
 # Tutor Assignment Optimization
 
